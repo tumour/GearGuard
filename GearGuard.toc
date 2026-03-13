@@ -1,0 +1,12 @@
+## Interface: 120001
+## Title: GearGuard
+## Notes: Protects equipment set items from being accidentally sold|nЗащищает предметы из наборов экипировки от случайной продажи
+## Author: ivano
+## Version: 1.0.0
+## IconTexture: Interface\Icons\INV_Shield_11
+## X-Curse-Project-ID: 1485413
+
+Locale.lua
+Core.lua
+Highlight.lua
+Protect.lua

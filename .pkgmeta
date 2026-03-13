@@ -1,0 +1,7 @@
+package-as: GearGuard
+
+ignore:
+  - .github
+  - README.md
+  - LICENSE
+  - "*.zip"
