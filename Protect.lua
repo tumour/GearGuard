@@ -3,7 +3,8 @@ local L = ns.L
 local GearGuard = ns.GearGuard
 
 -- ============================================================
--- Protect module — block selling equipment set items at vendor
+-- Protect module — auto-buyback equipment set items sold at vendor
+-- Uses hooksecurefunc to avoid tainting secure functions
 -- ============================================================
 local Protect = {}
 GearGuard:RegisterModule("Protect", Protect)
@@ -22,21 +23,18 @@ GearGuard:RegisterEvent("MERCHANT_CLOSED", function()
 end)
 
 -- ============================================================
--- Confirmation dialog
+-- Buyback confirmation dialog
 -- ============================================================
-StaticPopupDialogs["GEARGUARD_CONFIRM_SELL"] = {
+StaticPopupDialogs["GEARGUARD_SOLD_PROTECTED"] = {
     text = "%s",
     button1 = L["CONFIRM_YES"],
     button2 = L["CONFIRM_NO"],
     OnAccept = function(self, data)
-        if data and data.bag and data.slot then
-            -- Temporarily unhook to avoid recursion
-            Protect.selling = true
-            C_Container.UseContainerItem(data.bag, data.slot)
-            Protect.selling = false
+        if data and data.buybackIndex and merchantOpen then
+            BuybackItem(data.buybackIndex)
         end
     end,
-    timeout = 0,
+    timeout = 15,
     whileDead = false,
     hideOnEscape = true,
     preferredIndex = 3,
@@ -44,35 +42,29 @@ StaticPopupDialogs["GEARGUARD_CONFIRM_SELL"] = {
 }
 
 -- ============================================================
--- Hook UseContainerItem to intercept sells
+-- Post-hook: detect when a protected item is sold
+-- Runs AFTER UseContainerItem — no taint
 -- ============================================================
-local originalUseContainerItem = C_Container.UseContainerItem
+hooksecurefunc(C_Container, "UseContainerItem", function(bag, slot)
+    if not merchantOpen then return end
 
-C_Container.UseContainerItem = function(bag, slot, ...)
-    -- Skip if we're in the confirmed sell flow
-    if Protect.selling then
-        return originalUseContainerItem(bag, slot, ...)
+    -- The item is already sold at this point
+    -- Check the last buyback slot (most recently sold)
+    local numBuyback = GetNumBuybackItems()
+    if numBuyback == 0 then return end
+
+    local link = GetBuybackItemLink(numBuyback)
+    if not link then return end
+
+    local itemID = GetItemInfoInstant(link)
+    if not itemID or not ns.IsProtected(itemID) then return end
+
+    -- Item is from an equipment set — offer buyback
+    local setNames = ns.GetSetNames(itemID)
+    local text = format(L["CONFIRM_SELL_TEXT"], link, setNames)
+
+    local dialog = StaticPopup_Show("GEARGUARD_SOLD_PROTECTED", text)
+    if dialog then
+        dialog.data = { buybackIndex = numBuyback }
     end
-
-    -- Only intercept when merchant is open
-    if not merchantOpen then
-        return originalUseContainerItem(bag, slot, ...)
-    end
-
-    -- Check if the item is protected
-    local info = C_Container.GetContainerItemInfo(bag, slot)
-    if info and info.itemID and ns.IsProtected(info.itemID) then
-        local itemLink = C_Container.GetContainerItemLink(bag, slot)
-        local setNames = ns.GetSetNames(info.itemID)
-        local text = format(L["CONFIRM_SELL_TEXT"], itemLink or "?", setNames)
-
-        local dialog = StaticPopup_Show("GEARGUARD_CONFIRM_SELL", text)
-        if dialog then
-            dialog.data = { bag = bag, slot = slot }
-        end
-        return -- Block the sell
-    end
-
-    -- Not protected — sell normally
-    return originalUseContainerItem(bag, slot, ...)
-end
+end)
